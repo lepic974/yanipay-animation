@@ -1,0 +1,270 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  role          Role      @default(PARTICULIER)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts         Account[]
+  sessions         Session[]
+  wallets          Wallet[]
+  sentTransactions Transaction[] @relation("SenderTransactions")
+  receivedTransactions Transaction[] @relation("ReceiverTransactions")
+  loyaltyCards     LoyaltyCard[]
+  chatConversations ChatConversation[]
+  aiModelUsage     UserAiModelUsage[]
+  business         Business?
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+model Business {
+  id          String   @id @default(cuid())
+  userId      String   @unique @map("user_id")
+  companyId   String?  @map("company_id")
+  name        String
+  description String?
+  website     String?
+  phone       String?
+  address     String?
+  siret       String?  @unique
+  isVerified  Boolean  @default(false) @map("is_verified")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company        Company?         @relation(fields: [companyId], references: [id])
+  loyaltyPrograms LoyaltyProgram[]
+
+  @@map("businesses")
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  logo      String?
+  website   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  businesses Business[]
+
+  @@map("companies")
+}
+
+model Wallet {
+  id        String     @id @default(cuid())
+  userId    String     @map("user_id")
+  type      WalletType
+  balance   Decimal    @default(0) @db.Decimal(18, 8)
+  isActive  Boolean    @default(true) @map("is_active")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentTransactions     Transaction[] @relation("SenderWalletTransactions")
+  receivedTransactions Transaction[] @relation("ReceiverWalletTransactions")
+
+  @@unique([userId, type])
+  @@map("wallets")
+}
+
+model Transaction {
+  id               String            @id @default(cuid())
+  senderId         String?           @map("sender_id")
+  receiverId       String?           @map("receiver_id")
+  senderWalletId   String?           @map("sender_wallet_id")
+  receiverWalletId String?           @map("receiver_wallet_id")
+  amount           Decimal           @db.Decimal(18, 8)
+  type             TransactionType
+  status           TransactionStatus @default(PENDING)
+  description      String?
+  reference        String?           @unique
+  fees             Decimal?          @default(0) @db.Decimal(18, 8)
+  exchangeRate     Decimal?          @db.Decimal(18, 8)
+  metadata         Json?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  sender         User?   @relation("SenderTransactions", fields: [senderId], references: [id])
+  receiver       User?   @relation("ReceiverTransactions", fields: [receiverId], references: [id])
+  senderWallet   Wallet? @relation("SenderWalletTransactions", fields: [senderWalletId], references: [id])
+  receiverWallet Wallet? @relation("ReceiverWalletTransactions", fields: [receiverWalletId], references: [id])
+
+  @@map("transactions")
+}
+
+model LoyaltyProgram {
+  id          String   @id @default(cuid())
+  businessId  String   @map("business_id")
+  name        String
+  description String?
+  pointsRatio Decimal  @default(1) @db.Decimal(5, 2) // Points earned per euro spent
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  loyaltyCards LoyaltyCard[]
+
+  @@map("loyalty_programs")
+}
+
+model LoyaltyCard {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  loyaltyProgramId String   @map("loyalty_program_id")
+  points           Decimal  @default(0) @db.Decimal(10, 2)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loyaltyProgram LoyaltyProgram @relation(fields: [loyaltyProgramId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, loyaltyProgramId])
+  @@map("loyalty_cards")
+}
+
+model ChatConversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@map("chat_conversations")
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String   // 'user' or 'assistant'
+  content        String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model UserAiModelUsage {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  modelId   String   @map("model_id")
+  tokens    Int      @default(0)
+  requests  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model AiModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modelId])
+  @@map("user_ai_model_usage")
+}
+
+model AiModel {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  provider    String   // 'google', 'openai', etc.
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  userUsage UserAiModelUsage[]
+
+  @@map("ai_models")
+}
+
+enum Role {
+  PARTICULIER
+  PROFESSIONNEL
+  EMPLOYE
+  ADMIN
+}
+
+enum WalletType {
+  EUROS
+  EUROS_SAVINGS
+  YANI_COIN
+  BITCOIN
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER_OUT
+  TRANSFER_IN
+  PAYMENT
+  LOYALTY_REWARD
+  CONVERSION
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
